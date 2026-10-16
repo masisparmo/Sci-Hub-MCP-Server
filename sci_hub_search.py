@@ -228,14 +228,28 @@ def search_papers_by_keyword(keyword: str, num_results: int = 5) -> list:
     if not keyword or not keyword.strip():
         return []
     
-    limit = max(1, min(int(num_results), 10))
+    limit = max(1, min(int(num_results), 20))
     
     # 1. Search directly on Sci-Hub mirror search engines first (guarantees papers are on Sci-Hub)
     papers = search_scihub_direct(keyword, limit=limit)
+    
+    # 2. If results are fewer than requested and keyword contains stopwords (like 'and', 'or', 'in'),
+    # try cleaning stopwords to find additional relevant papers on Sci-Hub
+    if len(papers) < limit:
+        cleaned_kw = re.sub(r'\b(and|or|in|the|with|for|of|dan|yang|di)\b', ' ', keyword, flags=re.IGNORECASE)
+        cleaned_kw = ' '.join(cleaned_kw.split())
+        if cleaned_kw.lower() != keyword.strip().lower():
+            more_papers = search_scihub_direct(cleaned_kw, limit=limit)
+            for p in more_papers:
+                if not any(existing.get("doi") == p.get("doi") for existing in papers):
+                    papers.append(p)
+                    if len(papers) >= limit:
+                        break
+
     if papers:
         return papers
 
-    # 2. Fallback to CrossRef API if direct Sci-Hub search returned empty
+    # 3. Fallback to CrossRef API if direct Sci-Hub search returned empty
     try:
         url = f"https://api.crossref.org/works?query={requests.utils.quote(keyword.strip())}&rows={limit}"
         resp = requests.get(url, headers={"User-Agent": "SciHub-MCP-Server/1.0 (mailto:admin@isparmo.com)"}, timeout=10)
@@ -246,6 +260,8 @@ def search_papers_by_keyword(keyword: str, num_results: int = 5) -> list:
                 if doi and not any(p.get("doi") == doi for p in papers):
                     paper_data = search_paper_by_doi(doi)
                     papers.append(paper_data)
+                    if len(papers) >= limit:
+                        break
     except Exception as e:
         print(f"Keyword search error: {e}")
         papers.append({"error": str(e), "status": "error"})

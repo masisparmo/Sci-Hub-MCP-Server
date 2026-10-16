@@ -104,7 +104,7 @@ class SearchTitleRequest(BaseModel):
 
 class SearchKeywordRequest(BaseModel):
     keyword: str = Field(..., description="Keywords or topic describing the research area")
-    num_results: Optional[int] = Field(default=5, description="Maximum number of papers to return (default 5, max 10)")
+    num_results: Optional[int] = Field(default=5, description="Maximum number of papers to return (default 5, max 20)")
 
 class DownloadRequest(BaseModel):
     pdf_url: str = Field(..., description="The direct URL of the PDF to download")
