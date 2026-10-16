@@ -58,6 +58,7 @@ def root_status():
         "service": "Sci-Hub Academic Search MCP & REST API Server",
         "documentation": "/docs",
         "openapi_schema": "/openapi.json",
+        "mcp_sse_endpoint": "/sse",
         "endpoints": [
             "/api/search_by_doi",
             "/api/search_by_title",
@@ -95,7 +96,7 @@ async def api_get_metadata(request: SearchDoiRequest) -> Dict[str, Any]:
     return await asyncio.to_thread(search_paper_by_doi, request.doi)
 
 
-# MCP FastMCP setup (compatible with local stdio usage)
+# MCP FastMCP setup (compatible with local stdio usage and remote SSE)
 def get_mcp_instance():
     try:
         from mcp.server.fastmcp import FastMCP
@@ -103,7 +104,7 @@ def get_mcp_instance():
 
         @mcp.tool()
         async def search_scihub_by_doi(doi: str) -> Dict[str, Any]:
-            """Search for a paper on Sci-Hub using its DOI."""
+            """Search for a paper on Sci-Hub using its DOI (e.g. 10.1038/nature09492)."""
             return await asyncio.to_thread(search_paper_by_doi, doi)
 
         @mcp.tool()
@@ -117,6 +118,11 @@ def get_mcp_instance():
             return await asyncio.to_thread(search_papers_by_keyword, keyword, num_results)
 
         @mcp.tool()
+        async def get_paper_metadata(doi: str) -> Dict[str, Any]:
+            """Retrieve bibliographic metadata for a paper given its DOI."""
+            return await asyncio.to_thread(search_paper_by_doi, doi)
+
+        @mcp.tool()
         async def download_scihub_pdf(pdf_url: str, output_path: str) -> str:
             """Download a paper PDF from Sci-Hub."""
             success = await asyncio.to_thread(download_paper, pdf_url, output_path)
@@ -128,6 +134,16 @@ def get_mcp_instance():
         return None
 
 mcp = get_mcp_instance()
+
+# Mount FastMCP SSE App so /sse and /messages endpoints work seamlessly for MCP clients
+if mcp and hasattr(mcp, "sse_app"):
+    try:
+        sse_subapp = mcp.sse_app()
+        app.mount("/mcp", sse_subapp)
+        app.mount("/", sse_subapp)
+        logging.info("FastMCP SSE subapp mounted at / and /mcp successfully")
+    except Exception as e:
+        logging.warning(f"Failed to mount FastMCP SSE app: {e}")
 
 if __name__ == "__main__":
     if "--stdio" in sys.argv:
