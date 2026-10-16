@@ -1,143 +1,111 @@
-# Sci-Hub MCP Server
+# Sci-Hub MCP & API Server
 
-[![smithery badge](https://smithery.ai/badge/@JackKuo666/sci-hub-mcp-server)](https://smithery.ai/server/@JackKuo666/sci-hub-mcp-server)
+🔍 Enable AI assistants (ChatGPT, Gemini, Claude Desktop, Cursor) to search, access, and analyze academic papers through Sci-Hub and CrossRef using a simple MCP interface & OpenAPI endpoints.
 
-🔍 Enable AI assistants to search, access, and analyze academic papers through Sci-Hub using a simple MCP interface.
+The Sci-Hub MCP & API Server provides a bridge between AI assistants and academic literature. It allows AI models to search for scientific articles by DOI, title, or keywords, access their metadata, and retrieve direct PDF links.
 
-The Sci-Hub MCP Server provides a bridge between AI assistants and Sci-Hub's repository of academic literature through the Model Context Protocol (MCP). It allows AI models to search for scientific articles by DOI, title, or keywords, access their metadata, and download PDFs in a programmatic way.
+---
 
 ## ✨ Core Features
 
-- 🔎 Paper Search by DOI: Find papers using their Digital Object Identifier ✅
-- 🔍 Paper Search by Title: Locate papers using their full or partial title ✅
-- 🔑 Paper Search by Keyword: Discover papers related to specific research areas ✅
-- 📊 Metadata Access: Retrieve detailed metadata for specific papers ✅
-- 📄 PDF Download: Download full-text PDF content when available ✅
+- 🔎 **Paper Search by DOI**: Find papers and direct PDF download links using Digital Object Identifier (DOI).
+- 🔍 **Paper Search by Title**: Locate papers using their full or partial title via CrossRef metadata resolution.
+- 🔑 **Paper Search by Keyword**: Discover papers and research articles related to specific topics.
+- 📊 **Metadata Access**: Retrieve detailed metadata (authors, journal, publication year, publisher).
+- 🌐 **Cloud Ready**: Configured for instant deployment on **Render.com** (with automatic `$PORT` binding & `/health` endpoint).
+- 🤖 **ChatGPT & Gemini Ready**: Exposes `/openapi.json` and interactive Swagger docs at `/docs` for easy setup with ChatGPT Custom GPT Actions and Gemini Function Calling.
+- 💻 **MCP Compatible**: Maintains backward compatibility with local MCP clients (`--stdio`).
 
-## 🚀 Quick Start
+---
 
-### Prerequisites
+## 🚀 Deployment on Render.com
 
-- Python 3.10+
-- FastMCP library
+Deploying to Render takes only 2 minutes:
 
-### Installation
+1. **Fork or Push** this repository to your GitHub account (`masisparmo/Sci-Hub-MCP-Server`).
+2. Log into [dashboard.render.com](https://dashboard.render.com).
+3. Click **New +** -> **Web Service**.
+4. Connect your GitHub repository `masisparmo/Sci-Hub-MCP-Server`.
+5. Configure the service settings:
+   - **Environment**: `Python 3`
+   - **Build Command**: `pip install -r requirements.txt`
+   - **Start Command**: `uvicorn sci_hub_server:app --host 0.0.0.0 --port $PORT`
+   - **Instance Type**: `Free`
+6. Click **Create Web Service**.
+7. Once deployed, Render will provide a public URL like:
+   `https://scihub-mcp-server.onrender.com`
 
-1. Clone the repository:
+Verify the deployment by visiting `https://<YOUR-RENDER-URL>/docs` in your browser.
+
+---
+
+## 🤖 Integration Guides
+
+### 1. ChatGPT (Custom GPT Actions)
+
+1. Open [ChatGPT](https://chatgpt.com) and go to **Explore GPTs** -> **Create**.
+2. Go to the **Configure** tab.
+3. Under **Actions**, click **Create new action**.
+4. Click **Import from URL** and enter:
    ```
-   git clone https://github.com/JackKuo666/Sci-Hub-MCP-Server.git
-   cd Sci-Hub-MCP-Server
+   https://<YOUR-RENDER-URL>/openapi.json
    ```
+5. ChatGPT will automatically parse all available tools:
+   - `search_scihub_by_doi`
+   - `search_scihub_by_title`
+   - `search_scihub_by_keyword`
+   - `get_paper_metadata`
+6. Under **Privacy Policy**, you can provide your base Render URL (`https://<YOUR-RENDER-URL>`).
+7. Test the Action in the Preview panel by typing:
+   > *"Can you find the paper with DOI 10.1038/nature09492 and give me the summary and PDF link?"*
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+---
 
-## 📊 Usage
+### 2. Google Gemini (Spark / AI Studio / Function Calling)
 
-Start the MCP server:
+1. Open [Google AI Studio](https://aistudio.google.com).
+2. Create a new prompt or assistant using Gemini 1.5 Pro / Flash.
+3. Under **Tools**, enable **Function Calling**.
+4. Import the tool schema directly from `https://<YOUR-RENDER-URL>/openapi.json`.
+5. You can now prompt Gemini to retrieve academic papers via the server endpoints.
+
+---
+
+### 3. Local Desktop MCP Clients (Claude Desktop, Cursor)
+
+For local desktop usage via stdio, run:
 
 ```bash
-python sci_hub_server.py
+python sci_hub_server.py --stdio
 ```
 
-## Usage with Claude Desktop
-
-Add this configuration to your `claude_desktop_config.json`:
-
-(Mac OS)
+Configuration for `claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "scihub": {
       "command": "python",
-      "args": ["-m", "sci_hub_server.py"]
-      }
-  }
-}
-```
-
-(Windows version):
-
-```json
-{
-  "mcpServers": {
-    "scihub": {
-      "command": "C:\\Users\\YOUR\\PATH\\miniconda3\\envs\\mcp_server\\python.exe",
-      "args": [
-        "D:\\code\\YOUR\\PATH\\Sci-Hub-MCP-Server\\sci_hub_server.py"
-      ],
-      "env": {},
-      "disabled": false,
-      "autoApprove": []
+      "args": ["d:/Aplikasi/MCP Sci-Hub/sci_hub_server.py", "--stdio"]
     }
   }
 }
 ```
 
-## 🛠 MCP Tools
+---
 
-The Sci-Hub MCP Server provides the following tools:
+## 📁 Endpoints
 
-1. `search_scihub_by_doi`: Search for a paper on Sci-Hub using its DOI (Digital Object Identifier).
-2. `search_scihub_by_title`: Search for a paper on Sci-Hub using its title.
-3. `search_scihub_by_keyword`: Search for papers on Sci-Hub using a keyword.
-4. `download_scihub_pdf`: Download a paper PDF from Sci-Hub.
-5. `get_paper_metadata`: Get metadata information for a paper using its DOI.
+- `GET /`: Server status and summary
+- `GET /health`: Health check endpoint for Render
+- `GET /docs`: Interactive Swagger documentation
+- `GET /openapi.json`: OpenAPI 3.0 specification
+- `POST /api/search_by_doi`: Search by DOI
+- `POST /api/search_by_title`: Search by Title
+- `POST /api/search_by_keyword`: Search by Keyword
+- `POST /api/get_metadata`: Get Metadata by DOI
 
-### Searching Papers by DOI
-
-You can ask the AI assistant to search for papers using DOI:
-```
-Can you search Sci-Hub for the paper with DOI 10.1038/nature09492?
-```
-
-### Searching Papers by Title
-
-You can search for papers using their title:
-```
-Can you find the paper titled "Choosing Assessment Instruments for Posttraumatic Stress Disorder Screening and Outcome Research" on Sci-Hub?
-```
-
-### Searching Papers by Keyword
-
-You can search for papers related to specific keywords:
-```
-Can you search Sci-Hub for recent papers about artificial intelligence in medicine?
-```
-
-### Downloading Papers
-
-Once you have found a paper, you can download it:
-```
-Can you download the PDF for this paper to my_paper.pdf?
-```
-
-### Getting Paper Metadata
-
-You can request metadata for a paper using its DOI:
-```
-Can you show me the metadata for the paper with DOI 10.1038/nature09492?
-```
-
-## 📁 Project Structure
-
-- `sci_hub_server.py`: The main MCP server implementation using FastMCP
-- `sci_hub_search.py`: Contains the logic for searching Sci-Hub and retrieving paper information
-
-## 🔧 Dependencies
-
-- Python 3.10+
-- FastMCP
-- requests
-- bs4
-- scihub
-
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+---
 
 ## 📄 License
 
@@ -145,4 +113,4 @@ This project is licensed under the MIT License.
 
 ## ⚠️ Disclaimer
 
-This tool is for research purposes only. Please respect copyright laws and use this tool responsibly. The authors do not endorse or encourage any copyright infringement.
+This tool is for educational and research purposes only. Please respect copyright laws and publisher terms.

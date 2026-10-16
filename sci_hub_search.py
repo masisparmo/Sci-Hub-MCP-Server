@@ -1,136 +1,222 @@
-from scihub import SciHub
-import re
 import os
+import re
 import urllib3
 import requests
+from bs4 import BeautifulSoup
 
-# 禁用 HTTPS 证书验证警告
+# Disable HTTPS verification warnings for mirror sites
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-def create_scihub_instance():
-    """创建 SciHub 实例并配置"""
-    sh = SciHub()
-    sh.timeout = 30  # 增加超时时间到 30 秒
-    return sh
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+}
 
-def search_paper_by_doi(doi):
-    """通过 DOI 在 Sci-Hub 上搜索论文"""
-    sh = create_scihub_instance()
-    try:
-        result = sh.fetch(doi)
-        return {
-            'doi': doi,
-            'pdf_url': result['url'],
-            'status': 'success',
-            'title': result.get('title', ''),
-            'author': result.get('author', ''),
-            'year': result.get('year', '')
-        }
-    except Exception as e:
-        print(f"搜索出错: {str(e)}")
-        return {
-            'doi': doi,
-            'status': 'not_found'
-        }
+SCIHUB_MIRRORS = [
+    "https://sci-hub.se",
+    "https://sci-hub.st",
+    "https://sci-hub.ru"
+]
 
-def search_paper_by_title(title):
-    """通过标题在 Sci-Hub 上搜索论文"""
-    # 由于 SciHub 包不支持 search 方法，我们改用 DOI 搜索
-    # 首先尝试从 CrossRef 获取 DOI
+
+def clean_doi_string(doi: str) -> str:
+    """Clean DOI by removing prefixes like https://doi.org/."""
+    doi = doi.strip()
+    doi = re.sub(r"^https?://(dx\.)?doi\.org/", "", doi)
+    return doi
+
+
+def get_metadata_from_crossref(doi: str) -> dict:
+    """Fetch accurate paper metadata from CrossRef API."""
+    clean_doi = clean_doi_string(doi)
+    url = f"https://api.crossref.org/works/{clean_doi}"
     try:
-        url = f"https://api.crossref.org/works?query.title={title}&rows=1"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            if data['message']['items']:
-                doi = data['message']['items'][0]['DOI']
-                return search_paper_by_doi(doi)
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "SciHub-MCP-Server/1.0 (mailto:admin@isparmo.com)"},
+            timeout=10
+        )
+        if resp.status_code == 200:
+            item = resp.json().get("message", {})
+            title = item.get("title", [""])[0] if item.get("title") else ""
+            authors = []
+            for a in item.get("author", []):
+                name = f"{a.get('given', '')} {a.get('family', '')}".strip()
+                if name:
+                    authors.append(name)
+            year = ""
+            published = item.get("published") or item.get("created") or item.get("issued")
+            if published and "date-parts" in published and published["date-parts"]:
+                year = str(published["date-parts"][0][0])
+            journal = item.get("container-title", [""])[0] if item.get("container-title") else ""
+            return {
+                "doi": clean_doi,
+                "title": title,
+                "author": ", ".join(authors),
+                "year": year,
+                "journal": journal,
+                "publisher": item.get("publisher", "")
+            }
     except Exception as e:
-        print(f"CrossRef 搜索出错: {str(e)}")
+        print(f"CrossRef error for DOI {clean_doi}: {e}")
+    return {"doi": clean_doi}
+
+
+def get_scihub_pdf_url(doi: str) -> str:
+    """Find working Sci-Hub PDF URL across mirrors or python-scihub package."""
+    clean_doi = clean_doi_string(doi)
+
+    # 1. Try python scihub package if available
+    try:
+        from scihub import SciHub
+        sh = SciHub()
+        sh.timeout = 15
+        res = sh.fetch(clean_doi)
+        if res and res.get("url"):
+            url = res["url"]
+            if url.startswith("//"):
+                url = "https:" + url
+            return url
+    except Exception:
+        pass
+
+    # 2. Try direct scraping of active Sci-Hub mirrors
+    for mirror in SCIHUB_MIRRORS:
+        try:
+            target_url = f"{mirror}/{clean_doi}"
+            resp = requests.get(target_url, headers=HEADERS, verify=False, timeout=12, allow_redirects=True)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                
+                # Check iframe with PDF
+                iframe = soup.find("iframe", id="pdf") or soup.find("iframe")
+                if iframe and iframe.get("src"):
+                    src = iframe["src"]
+                    if src.startswith("//"):
+                        return "https:" + src
+                    elif src.startswith("/"):
+                        return mirror + src
+                    elif src.startswith("http"):
+                        return src
+                
+                # Check embed PDF
+                embed = soup.find("embed", type="application/pdf") or soup.find("embed")
+                if embed and embed.get("src"):
+                    src = embed["src"]
+                    if src.startswith("//"):
+                        return "https:" + src
+                    elif src.startswith("/"):
+                        return mirror + src
+                    elif src.startswith("http"):
+                        return src
+
+                # Check download button
+                button = soup.find("button", onclick=True)
+                if button:
+                    match = re.search(r"location\.href=['\"]([^'\"]+)['\"]", button["onclick"])
+                    if match:
+                        src = match.group(1)
+                        if src.startswith("//"):
+                            return "https:" + src
+                        elif src.startswith("/"):
+                            return mirror + src
+                        elif src.startswith("http"):
+                            return src
+        except Exception:
+            continue
+            
+    return ""
+
+
+def search_paper_by_doi(doi: str) -> dict:
+    """Search for a paper on Sci-Hub & CrossRef using its DOI."""
+    clean_doi = clean_doi_string(doi)
+    if not clean_doi:
+        return {"doi": doi, "status": "error", "error": "Empty DOI provided."}
+    
+    meta = get_metadata_from_crossref(clean_doi)
+    pdf_url = get_scihub_pdf_url(clean_doi)
+    
+    if pdf_url or meta.get("title"):
+        return {
+            "doi": clean_doi,
+            "title": meta.get("title", ""),
+            "author": meta.get("author", ""),
+            "year": meta.get("year", ""),
+            "journal": meta.get("journal", ""),
+            "pdf_url": pdf_url or "",
+            "status": "success" if pdf_url else "pdf_not_found",
+            "message": "PDF link available" if pdf_url else "Metadata found, but PDF not available on Sci-Hub"
+        }
     
     return {
-        'title': title,
-        'status': 'not_found'
+        "doi": clean_doi,
+        "status": "not_found",
+        "error": f"Paper with DOI '{clean_doi}' was not found."
     }
 
-def search_papers_by_keyword(keyword, num_results=10):
-    """通过关键词搜索论文，返回元数据列表"""
-    # 使用 CrossRef API 进行搜索
+
+def search_paper_by_title(title: str) -> dict:
+    """Search for a paper by title using CrossRef to resolve DOI, then fetch from Sci-Hub."""
+    if not title or not title.strip():
+        return {"title": title, "status": "error", "error": "Empty title provided."}
+    
+    try:
+        url = f"https://api.crossref.org/works?query.title={requests.utils.quote(title.strip())}&rows=1"
+        resp = requests.get(url, headers={"User-Agent": "SciHub-MCP-Server/1.0 (mailto:admin@isparmo.com)"}, timeout=10)
+        if resp.status_code == 200:
+            items = resp.json().get("message", {}).get("items", [])
+            if items and items[0].get("DOI"):
+                return search_paper_by_doi(items[0]["DOI"])
+    except Exception as e:
+        print(f"CrossRef search error: {e}")
+    
+    return {
+        "title": title,
+        "status": "not_found",
+        "error": f"No paper found matching title '{title}'."
+    }
+
+
+def search_papers_by_keyword(keyword: str, num_results: int = 5) -> list:
+    """Search for papers matching keywords, returning metadata and Sci-Hub links."""
+    if not keyword or not keyword.strip():
+        return []
+    
+    limit = max(1, min(int(num_results), 10))
     papers = []
     try:
-        url = f"https://api.crossref.org/works?query={keyword}&rows={num_results}"
-        response = requests.get(url)
-        if response.status_code == 200:
-            data = response.json()
-            for item in data['message']['items']:
-                doi = item.get('DOI')
+        url = f"https://api.crossref.org/works?query={requests.utils.quote(keyword.strip())}&rows={limit}"
+        resp = requests.get(url, headers={"User-Agent": "SciHub-MCP-Server/1.0 (mailto:admin@isparmo.com)"}, timeout=10)
+        if resp.status_code == 200:
+            items = resp.json().get("message", {}).get("items", [])
+            for item in items:
+                doi = item.get("DOI")
                 if doi:
-                    result = search_paper_by_doi(doi)
-                    if result['status'] == 'success':
-                        papers.append(result)
+                    paper_data = search_paper_by_doi(doi)
+                    papers.append(paper_data)
     except Exception as e:
-        print(f"搜索出错: {str(e)}")
+        print(f"Keyword search error: {e}")
+        papers.append({"error": str(e), "status": "error"})
     
     return papers
 
-def download_paper(pdf_url, output_path):
-    """下载论文 PDF"""
-    sh = SciHub()
+
+def download_paper(pdf_url: str, output_path: str) -> bool:
+    """Download paper PDF from given URL to a local destination."""
     try:
-        sh.download(pdf_url, output_path)
-        return True
-    except Exception as e:
-        print(f"下载出错: {str(e)}")
+        if not pdf_url:
+            return False
+        resp = requests.get(pdf_url, headers=HEADERS, verify=False, timeout=30, stream=True)
+        if resp.status_code == 200:
+            dir_name = os.path.dirname(os.path.abspath(output_path))
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+            with open(output_path, "wb") as f:
+                for chunk in resp.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            return True
         return False
-
-
-if __name__ == "__main__":
-    print("Sci-Hub 论文搜索测试\n")
-
-    # 1. DOI 搜索测试
-    print("1. 通过 DOI 搜索论文")
-    test_doi = "10.1002/jcad.12075"  # 一篇神经科学相关的论文
-    result = search_paper_by_doi(test_doi)
-    
-    if result['status'] == 'success':
-        print(f"标题: {result['title']}")
-        print(f"作者: {result['author']}")
-        print(f"年份: {result['year']}")
-        print(f"PDF URL: {result['pdf_url']}")
-        
-        # 尝试下载论文
-        output_file = f"paper_{test_doi.replace('/', '_')}.pdf"
-        if download_paper(result['pdf_url'], output_file):
-            print(f"论文已下载到: {output_file}")
-        else:
-            print("论文下载失败")
-    else:
-        print(f"未找到 DOI 为 {test_doi} 的论文")
-
-    # 2. 标题搜索测试
-    print("\n2. 通过标题搜索论文")
-    test_title = "Choosing Assessment Instruments for Posttraumatic Stress Disorder Screening and Outcome Research"
-    result = search_paper_by_title(test_title)
-    
-    if result['status'] == 'success':
-        print(f"DOI: {result['doi']}")
-        print(f"作者: {result['author']}")
-        print(f"年份: {result['year']}")
-        print(f"PDF URL: {result['pdf_url']}")
-    else:
-        print(f"未找到标题为 '{test_title}' 的论文")
-
-    # 3. 关键词搜索测试
-    print("\n3. 通过关键词搜索论文")
-    test_keyword = "artificial intelligence medicine 2023"
-    papers = search_papers_by_keyword(test_keyword, num_results=3)
-    
-    for i, paper in enumerate(papers, 1):
-        print(f"\n论文 {i}:")
-        print(f"标题: {paper['title']}")
-        print(f"DOI: {paper['doi']}")
-        print(f"作者: {paper['author']}")
-        print(f"年份: {paper['year']}")
-        if paper.get('pdf_url'):
-            print(f"PDF URL: {paper['pdf_url']}")
-
+    except Exception as e:
+        print(f"Download error: {e}")
+        return False
