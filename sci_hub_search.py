@@ -13,10 +13,10 @@ HEADERS = {
 }
 
 SCIHUB_MIRRORS = [
+    "https://sci-hub.reatk.com",
     "https://sci-hub.se",
     "https://sci-hub.box",
     "https://www.sci-hub.in",
-    "https://sci-hub.reatk.com",
     "https://sci-hub.al",
     "https://sci-hub.st",
     "https://sci-hub.ru"
@@ -160,11 +160,52 @@ def search_paper_by_doi(doi: str) -> dict:
     }
 
 
+def search_scihub_direct(query: str, limit: int = 5) -> list:
+    """Search directly on Sci-Hub mirror search engine for papers that exist in Sci-Hub."""
+    papers = []
+    search_mirrors = [
+        "https://sci-hub.reatk.com/search/?q=",
+        "https://sci-hub.se/search/?q="
+    ]
+    
+    for base_url in search_mirrors:
+        try:
+            url = f"{base_url}{requests.utils.quote(query.strip())}"
+            resp = requests.get(url, headers=HEADERS, verify=False, timeout=12)
+            if resp.status_code == 200:
+                soup = BeautifulSoup(resp.text, "html.parser")
+                
+                # Check for <a class="article" href="/10....">
+                article_links = soup.find_all("a", class_="article")
+                if not article_links:
+                    article_links = [a for a in soup.find_all("a") if a.get("href", "").lstrip("/").startswith("10.")]
+                
+                for art in article_links[:limit]:
+                    doi = art.get("href", "").lstrip("/")
+                    if doi.startswith("10.") and not any(p.get("doi") == doi for p in papers):
+                        paper_data = search_paper_by_doi(doi)
+                        papers.append(paper_data)
+                
+                if papers:
+                    break
+        except Exception as e:
+            print(f"Direct Sci-Hub search error on {base_url}: {e}")
+            continue
+
+    return papers
+
+
 def search_paper_by_title(title: str) -> dict:
-    """Search for a paper by title using CrossRef to resolve DOI, then fetch from Sci-Hub."""
+    """Search for a paper by title using Sci-Hub direct search first, then CrossRef fallback."""
     if not title or not title.strip():
         return {"title": title, "status": "error", "error": "Empty title provided."}
     
+    # 1. Try direct search on Sci-Hub
+    direct_results = search_scihub_direct(title, limit=1)
+    if direct_results and direct_results[0].get("status") == "success":
+        return direct_results[0]
+    
+    # 2. Fallback to CrossRef to resolve DOI
     try:
         url = f"https://api.crossref.org/works?query.title={requests.utils.quote(title.strip())}&rows=1"
         resp = requests.get(url, headers={"User-Agent": "SciHub-MCP-Server/1.0 (mailto:admin@isparmo.com)"}, timeout=10)
@@ -183,12 +224,18 @@ def search_paper_by_title(title: str) -> dict:
 
 
 def search_papers_by_keyword(keyword: str, num_results: int = 5) -> list:
-    """Search for papers matching keywords, returning metadata and Sci-Hub links."""
+    """Search for papers matching keywords, prioritizing papers available on Sci-Hub."""
     if not keyword or not keyword.strip():
         return []
     
     limit = max(1, min(int(num_results), 10))
-    papers = []
+    
+    # 1. Search directly on Sci-Hub mirror search engines first (guarantees papers are on Sci-Hub)
+    papers = search_scihub_direct(keyword, limit=limit)
+    if papers:
+        return papers
+
+    # 2. Fallback to CrossRef API if direct Sci-Hub search returned empty
     try:
         url = f"https://api.crossref.org/works?query={requests.utils.quote(keyword.strip())}&rows={limit}"
         resp = requests.get(url, headers={"User-Agent": "SciHub-MCP-Server/1.0 (mailto:admin@isparmo.com)"}, timeout=10)
@@ -196,7 +243,7 @@ def search_papers_by_keyword(keyword: str, num_results: int = 5) -> list:
             items = resp.json().get("message", {}).get("items", [])
             for item in items:
                 doi = item.get("DOI")
-                if doi:
+                if doi and not any(p.get("doi") == doi for p in papers):
                     paper_data = search_paper_by_doi(doi)
                     papers.append(paper_data)
     except Exception as e:
