@@ -14,6 +14,10 @@ HEADERS = {
 
 SCIHUB_MIRRORS = [
     "https://sci-hub.se",
+    "https://sci-hub.box",
+    "https://www.sci-hub.in",
+    "https://sci-hub.reatk.com",
+    "https://sci-hub.al",
     "https://sci-hub.st",
     "https://sci-hub.ru"
 ]
