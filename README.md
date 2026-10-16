@@ -1,85 +1,88 @@
 # Sci-Hub MCP & API Server
 
-🔍 Enable AI assistants (ChatGPT, Gemini, Claude Desktop, Cursor) to search, access, and analyze academic papers through Sci-Hub and CrossRef using a simple MCP interface & OpenAPI endpoints.
-
-The Sci-Hub MCP & API Server provides a bridge between AI assistants and academic literature. It allows AI models to search for scientific articles by DOI, title, or keywords, access their metadata, and retrieve direct PDF links.
+🔍 **Sci-Hub MCP Server** memungkinkan asisten AI seperti **Google Gemini (Spark)**, **ChatGPT**, dan **Claude Desktop** untuk mencari, mengakses metadata, dan mengunduh jurnal/paper ilmiah secara otomatis melalui Model Context Protocol (MCP) dan REST API.
 
 ---
 
-## ✨ Core Features
+## ✨ Fitur Utama
 
-- 🔎 **Paper Search by DOI**: Find papers and direct PDF download links using Digital Object Identifier (DOI).
-- 🔍 **Paper Search by Title**: Locate papers using their full or partial title via CrossRef metadata resolution.
-- 🔑 **Paper Search by Keyword**: Discover papers and research articles related to specific topics.
-- 📊 **Metadata Access**: Retrieve detailed metadata (authors, journal, publication year, publisher).
-- 🌐 **Cloud Ready**: Configured for instant deployment on **Render.com** (with automatic `$PORT` binding & `/health` endpoint).
-- 🤖 **ChatGPT & Gemini Ready**: Exposes `/openapi.json` and interactive Swagger docs at `/docs` for easy setup with ChatGPT Custom GPT Actions and Gemini Function Calling.
-- 💻 **MCP Compatible**: Maintains backward compatibility with local MCP clients (`--stdio`).
-
----
-
-## 🚀 Deployment on Render.com
-
-Deploying to Render takes only 2 minutes:
-
-1. **Fork or Push** this repository to your GitHub account (`masisparmo/Sci-Hub-MCP-Server`).
-2. Log into [dashboard.render.com](https://dashboard.render.com).
-3. Click **New +** -> **Web Service**.
-4. Connect your GitHub repository `masisparmo/Sci-Hub-MCP-Server`.
-5. Configure the service settings:
-   - **Environment**: `Python 3`
-   - **Build Command**: `pip install -r requirements.txt`
-   - **Start Command**: `uvicorn sci_hub_server:app --host 0.0.0.0 --port $PORT`
-   - **Instance Type**: `Free`
-6. Click **Create Web Service**.
-7. Once deployed, Render will provide a public URL like:
-   `https://scihub-mcp-server.onrender.com`
-
-Verify the deployment by visiting `https://<YOUR-RENDER-URL>/docs` in your browser.
+- 🔎 **Pencarian Berdasarkan DOI**: Menemukan metadata lengkap dan tautan unduh PDF langsung dari Sci-Hub.
+- 🔍 **Pencarian Berdasarkan Judul**: Mencari nomor DOI melalui CrossRef, lalu menghubungkannya ke Sci-Hub.
+- 🔑 **Pencarian Berdasarkan Kata Kunci**: Menemukan kumpulan paper terkait topik/riset tertentu.
+- 📊 **Pengambilan Metadata Akurat**: Penulis, tahun terbit, jurnal/penerbit, dan URL PDF.
+- 🌐 **Dukungan Multi-Platform (Universal)**:
+  - **Google Gemini Spark (Connected Apps)**: Mendukung protokol *Streamable HTTP*.
+  - **ChatGPT Custom MCP Server (Plugins)**: Mendukung protokol *Server-Sent Events (SSE)*.
+  - **ChatGPT Custom GPT (Actions)**: Mendukung skema *OpenAPI 3.0*.
+  - **Klien MCP Desktop**: Claude Desktop & Cursor via `stdio`.
 
 ---
 
-## 🤖 Integration Guides
+## 🚀 Panduan Pemasangan
 
-### 1. ChatGPT (Custom GPT Actions)
+### 1. Google Gemini Spark (Aplikasi Terhubung / Connected Apps)
 
-1. Open [ChatGPT](https://chatgpt.com) and go to **Explore GPTs** -> **Create**.
-2. Go to the **Configure** tab.
-3. Under **Actions**, click **Create new action**.
-4. Click **Import from URL** and enter:
+Berdasarkan [Panduan Resmi Google Gemini](https://support.google.com/gemini/answer/17209137), Gemini menggunakan protokol **Streamable HTTP**.
+
+1. Buka [gemini.google.com](https://gemini.google.com) di browser komputer Anda.
+2. Klik **Setelan (Settings)** di kiri bawah > pilih **Aplikasi Terhubung (Connected Apps)**.
+3. Gulir ke bagian **Aplikasi Kustom (Custom Apps)** > klik **Tambahkan aplikasi kustom (Add a custom app)**.
+4. Masukkan URL berikut pada kolom **URL Server MCP**:
+   ```text
+   https://sci-hub-mcp.onrender.com/mcp
    ```
-   https://<YOUR-RENDER-URL>/openapi.json
+5. Klik **Berikutnya (Next)** dan ikuti konfirmasi di layar.
+6. **Cara Penggunaan di Chat**:
+   Ketik `@` lalu pilih aplikasi custom Anda, atau langsung tanyakan:
+   > *"Tolong carikan paper dengan DOI 10.1038/nature09492 dan berikan tautan PDF-nya."*
+
+---
+
+### 2. ChatGPT (Custom MCP Server / Plugins)
+
+Jika menggunakan fitur integrasi MCP resmi di ChatGPT (Developer Mode / Plugins):
+
+1. Buka [chatgpt.com](https://chatgpt.com).
+2. Buka menu **Plugins** atau **Apps** > klik tombol **`+`** atau **Add custom MCP server**.
+3. Isi formulir dengan data berikut:
+   * **Name**: `Sci-Hub`
+   * **Description**: `Cari paper dan unduh PDF jurnal ilmiah`
+   * **Connection**: Pilih tab **Server URL**
+   * **Server URL**:
+     ```text
+     https://sci-hub-mcp.onrender.com/sse
+     ```
+   * **Authentication**: Pilih **`No authentication`** *(PENTING: Jangan pilih OAuth)*
+4. Centang pernyataan persetujuan risiko (*I understand and want to continue*).
+5. Klik **Create as a plugin**.
+
+---
+
+### 3. ChatGPT (Custom GPT Actions)
+
+Jika Anda membuat Custom GPT sendiri di [ChatGPT GPT Builder](https://chatgpt.com/gpts/editor):
+
+1. Masuk ke tab **Configure** pada Custom GPT Anda.
+2. Gulir ke bawah dan klik **Create new action**.
+3. Di bagian **Schema**, klik **Import from URL**.
+4. Masukkan URL OpenAPI Schema:
+   ```text
+   https://sci-hub-mcp.onrender.com/openapi.json
    ```
-5. ChatGPT will automatically parse all available tools:
-   - `search_scihub_by_doi`
-   - `search_scihub_by_title`
-   - `search_scihub_by_keyword`
-   - `get_paper_metadata`
-6. Under **Privacy Policy**, you can provide your base Render URL (`https://<YOUR-RENDER-URL>`).
-7. Test the Action in the Preview panel by typing:
-   > *"Can you find the paper with DOI 10.1038/nature09492 and give me the summary and PDF link?"*
+5. Klik **Import**. ChatGPT akan otomatis mendeteksi semua tools (`search_scihub_by_doi`, `search_scihub_by_title`, dll.).
+6. Pada kolom **Privacy Policy**, isi: `https://sci-hub-mcp.onrender.com`.
 
 ---
 
-### 2. Google Gemini (Spark / AI Studio / Function Calling)
+### 4. Klien MCP Lokal (Claude Desktop / Cursor)
 
-1. Open [Google AI Studio](https://aistudio.google.com).
-2. Create a new prompt or assistant using Gemini 1.5 Pro / Flash.
-3. Under **Tools**, enable **Function Calling**.
-4. Import the tool schema directly from `https://<YOUR-RENDER-URL>/openapi.json`.
-5. You can now prompt Gemini to retrieve academic papers via the server endpoints.
-
----
-
-### 3. Local Desktop MCP Clients (Claude Desktop, Cursor)
-
-For local desktop usage via stdio, run:
+Jalankan server dalam mode `stdio` di komputer lokal Anda:
 
 ```bash
 python sci_hub_server.py --stdio
 ```
 
-Configuration for `claude_desktop_config.json`:
+Konfigurasi untuk `claude_desktop_config.json`:
 
 ```json
 {
@@ -94,23 +97,36 @@ Configuration for `claude_desktop_config.json`:
 
 ---
 
-## 📁 Endpoints
+## 🛠 Daftar Endpoint Server
 
-- `GET /`: Server status and summary
-- `GET /health`: Health check endpoint for Render
-- `GET /docs`: Interactive Swagger documentation
-- `GET /openapi.json`: OpenAPI 3.0 specification
-- `POST /api/search_by_doi`: Search by DOI
-- `POST /api/search_by_title`: Search by Title
-- `POST /api/search_by_keyword`: Search by Keyword
-- `POST /api/get_metadata`: Get Metadata by DOI
+| Endpoint | Protokol / Fungsi | Target Klien |
+| :--- | :--- | :--- |
+| `POST /mcp` | Streamable HTTP Transport | **Google Gemini Connected Apps** |
+| `GET /sse` | Server-Sent Events (SSE) | **ChatGPT Plugins / MCP Client** |
+| `GET /openapi.json` | OpenAPI 3.0 Schema | **ChatGPT Custom GPT Actions** |
+| `GET /docs` | Swagger Interactive UI | Pengujian manual & Dokumentasi |
+| `GET /health` | Health Check | Render.com Keep-Alive |
+| `POST /api/search_by_doi` | REST Endpoint | Webhook / Aplikasi Umum |
+| `POST /api/search_by_title` | REST Endpoint | Webhook / Aplikasi Umum |
+| `POST /api/search_by_keyword` | REST Endpoint | Webhook / Aplikasi Umum |
+| `POST /api/get_metadata` | REST Endpoint | Webhook / Aplikasi Umum |
 
 ---
 
-## 📄 License
+## ☁️ Deployment ke Render.com
 
-This project is licensed under the MIT License.
+Jika Anda ingin mendeploy instance server sendiri di Render:
+1. Hubungkan repositori GitHub ini ke [dashboard.render.com](https://dashboard.render.com).
+2. Buat **Web Service** baru:
+   * **Runtime**: `Python 3`
+   * **Build Command**: `pip install -r requirements.txt`
+   * **Start Command**: `uvicorn sci_hub_server:app --host 0.0.0.0 --port $PORT`
+   * **Instance Type**: `Free`
+3. Render akan otomatis mendeteksi environment variable `$PORT` dan menyajikan server secara publik.
 
-## ⚠️ Disclaimer
+---
 
-This tool is for educational and research purposes only. Please respect copyright laws and publisher terms.
+## 📄 Lisensi & Disclaimer
+
+* **Lisensi**: MIT License.
+* **Disclaimer**: Alat ini dibuat semata-mata untuk keperluan edukasi dan riset akademis. Harap patuhi hak cipta dan ketentuan hukum yang berlaku di wilayah Anda.
