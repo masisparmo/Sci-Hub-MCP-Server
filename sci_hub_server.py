@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 app = FastAPI(
     title="Sci-Hub Academic Search API & MCP Server",
     description="API & MCP Server to search, access metadata, and retrieve academic paper links via Sci-Hub & CrossRef.",
-    version="1.0.0",
+    version="1.1.0",
     docs_url="/docs",
     redoc_url="/redoc",
     openapi_url="/openapi.json"
@@ -56,6 +56,7 @@ def root_status():
     return {
         "status": "online",
         "service": "Sci-Hub Academic Search MCP & REST API Server",
+        "version": "1.1.0",
         "documentation": "/docs",
         "openapi_schema": "/openapi.json",
         "mcp_sse_endpoint": "/sse",
@@ -101,6 +102,12 @@ def get_mcp_instance():
     try:
         from mcp.server.fastmcp import FastMCP
         mcp = FastMCP("scihub")
+
+        # Disable DNS rebinding protection and allow all cloud/proxy hosts for Render.com & ChatGPT
+        if hasattr(mcp, "settings") and hasattr(mcp.settings, "transport_security"):
+            mcp.settings.transport_security.enable_dns_rebinding_protection = False
+            mcp.settings.transport_security.allowed_hosts = ["*"]
+            mcp.settings.transport_security.allowed_origins = ["*"]
 
         @mcp.tool()
         async def search_scihub_by_doi(doi: str) -> Dict[str, Any]:
